@@ -14,6 +14,10 @@ local QuestieTracker = QuestieLoader:ImportModule("QuestieTracker")
 local QuestieNameplate = QuestieLoader:ImportModule("QuestieNameplate")
 ---@type QuestieMap
 local QuestieMap = QuestieLoader:ImportModule("QuestieMap")
+---@type AvailableQuests
+local AvailableQuests = QuestieLoader:ImportModule("AvailableQuests")
+---@type QuestieDBMIntegration
+local QuestieDBMIntegration = QuestieLoader:ImportModule("QuestieDBMIntegration")
 ---@type l10n
 local l10n = QuestieLoader:ImportModule("l10n")
 
@@ -21,7 +25,8 @@ QuestieOptionsEngine.tabs.profiles = { ... }
 
 local selectedDeleteProfile = nil
 
----Refreshes Questie visuals and option controls when a profile is changed
+---Applies the new profile to Questie's visuals and to the option controls being shown. AceDB calls this for every
+---change of profile. Refreshing a control never runs its setter, so what setters do to apply a value is covered here.
 local function _OnProfileChanged()
     if Questie.SetIcons then
         Questie:SetIcons()
@@ -30,15 +35,21 @@ local function _OnProfileChanged()
         QuestieMap:RescaleIcons()
         QuestieMap:RescaleTownsfolkIcons()
     end
+    -- Resets draw available quests again a few frames later, which has to use the new profile's level filters
+    AvailableQuests.ResetLevelRequirementCache()
     if QuestieQuest and QuestieQuest.SmoothReset then
         QuestieQuest:SmoothReset()
     end
     if QuestieTracker and QuestieTracker.Update then
         QuestieTracker:Update()
+        QuestieTracker:UpdateFormatting()
     end
     if QuestieNameplate and QuestieNameplate.RedrawIcons then
         QuestieNameplate:RedrawIcons()
+        QuestieNameplate:RedrawFrameIcon()
     end
+    QuestieDBMIntegration:ChangeZoomLevel(Questie.db.profile.DBMHUDZoom)
+    QuestieDBMIntegration:ChangeRefreshRate(Questie.db.profile.DBMHUDRefresh)
     QuestieOptionsEngine:RefreshStates()
 end
 
@@ -181,7 +192,6 @@ function QuestieOptionsEngine.tabs.profiles:Initialize()
                             selectedDeleteProfile = nil
                         end
                         Questie.db:SetProfile(val)
-                        _OnProfileChanged()
                     end
                 end,
             },
@@ -212,7 +222,6 @@ function QuestieOptionsEngine.tabs.profiles:Initialize()
                 set = function(val)
                     if val then
                         Questie.db:CopyProfile(val)
-                        _OnProfileChanged()
                     end
                 end,
             },
@@ -275,7 +284,6 @@ Popup.Dialogs["QUESTIE_PROFILE_RESET_CONFIRM"] = {
     button2 = NO,
     OnAccept = function()
         Questie.db:ResetProfile()
-        _OnProfileChanged()
     end,
     OnShow = function(self)
         local current = Questie.db:GetCurrentProfile() or ""
